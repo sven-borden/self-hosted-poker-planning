@@ -1,0 +1,58 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:17.5-alpine
+    environment:
+      POSTGRES_DB: planning_poker
+      POSTGRES_USER: poker
+      POSTGRES_PASSWORD: poker
+    volumes:
+      - db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "poker"]
+      interval: 5s
+      retries: 5
+
+  redis:
+    image: redis:7.2-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 5
+
+  server:
+    build: ./server
+    environment:
+      PORT: 4000
+      DATABASE_URL: postgresql://poker:poker@db:5432/planning_poker
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: dev-secret
+      CORS_ORIGIN: http://localhost:3000
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 10s
+      retries: 5
+
+  client:
+    build: ./client
+    environment:
+      NEXT_PUBLIC_API_BASE: http://localhost:4000/api/v1
+      NEXT_PUBLIC_WS_BASE: ws://localhost:4000
+    depends_on:
+      - server
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 10s
+      retries: 5
+volumes:
+  db:
